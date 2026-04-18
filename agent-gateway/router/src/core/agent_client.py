@@ -24,6 +24,24 @@ class AgentClient:
     def __init__(self):
         self.timeout = httpx.Timeout(settings.REQUEST_TIMEOUT)
 
+    def _get_agent_rpc_url(self, agent_url: str) -> str:
+        """Return the JSON-RPC endpoint for an agent URL."""
+        normalized_url = agent_url.rstrip("/")
+        if normalized_url.endswith("/rpc"):
+            return normalized_url
+        if normalized_url.endswith("/health"):
+            normalized_url = normalized_url[: -len("/health")]
+        return f"{normalized_url}/rpc"
+
+    def _get_agent_health_url(self, agent_url: str) -> str:
+        """Return the health check endpoint for an agent URL."""
+        normalized_url = agent_url.rstrip("/")
+        if normalized_url.endswith("/health"):
+            return normalized_url
+        if normalized_url.endswith("/rpc"):
+            normalized_url = normalized_url[: -len("/rpc")]
+        return f"{normalized_url}/health"
+
     def _translate_agent_url(self, agent_url: str) -> str:
         """
         Translate external agent URLs to internal Docker network URLs for local deployment.
@@ -67,9 +85,10 @@ class AgentClient:
         try:
             # Translate agent URL for internal Docker network communication
             translated_url = self._translate_agent_url(agent_url)
-            payload = self._construct_payload(request, files, translated_url)
+            rpc_url = self._get_agent_rpc_url(translated_url)
+            payload = self._construct_payload(request, files, rpc_url)
 
-            logger.info(f"Sending request to agent: {agent_url} -> {translated_url}")
+            logger.info(f"Sending request to agent: {agent_url} -> {rpc_url}")
             logger.debug(f"Payload: {payload}")
 
             # Prepare headers for agent request
@@ -79,9 +98,7 @@ class AgentClient:
                 logger.debug("Added Authorization header for agent request")
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    translated_url, json=payload, headers=headers
-                )
+                response = await client.post(rpc_url, json=payload, headers=headers)
                 response.raise_for_status()
 
             data = response.json()
@@ -96,18 +113,18 @@ class AgentClient:
             return data
 
         except httpx.HTTPStatusError as e:
-            error_msg = f"HTTP error from agent {translated_url}: {e.response.status_code} - {e.response.text}"
+            error_msg = f"HTTP error from agent {rpc_url}: {e.response.status_code} - {e.response.text}"
             logger.error(error_msg)
             raise AgentClientError(error_msg) from e
 
         except httpx.RequestError as e:
-            error_msg = f"Request error to agent {translated_url}: {str(e)}"
+            error_msg = f"Request error to agent {rpc_url}: {str(e)}"
             logger.error(error_msg)
             raise AgentClientError(error_msg) from e
 
         except Exception as e:
             error_msg = (
-                f"Unexpected error communicating with agent {translated_url}: {str(e)}"
+                f"Unexpected error communicating with agent {rpc_url}: {str(e)}"
             )
             logger.error(error_msg)
             raise AgentClientError(error_msg) from e
@@ -201,7 +218,7 @@ class AgentClient:
             translated_url = self._translate_agent_url(agent_url)
 
             # Construct health check URL (assuming /health endpoint)
-            health_url = f"{translated_url.rstrip('/')}/health"
+            health_url = self._get_agent_health_url(translated_url)
 
             async with httpx.AsyncClient(timeout=httpx.Timeout(10.0)) as client:
                 response = await client.get(health_url)

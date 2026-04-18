@@ -50,6 +50,8 @@ services:
       dockerfile: app/Dockerfile
     container_name: nasiko-backend
     restart: unless-stopped
+    env_file:
+      - .nasiko-local.env
     ports:
       - "8000:8000"
     depends_on:
@@ -65,10 +67,6 @@ services:
       MONGO_NASIKO_DATABASE: nasiko
       REDIS_HOST: redis
       REDIS_URL: redis://redis:6379
-      USER_CREDENTIALS_ENCRYPTION_KEY: ${USER_CREDENTIALS_ENCRYPTION_KEY}
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
-      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
       AUTH_SERVICE_URL: http://nasiko-auth-service:8001
       PHOENIX_SERVICE_URL: http://phoenix-observability:6006
       K8S_ENABLED: "false"
@@ -261,14 +259,12 @@ services:
     restart: unless-stopped
     depends_on:
       - nasiko-backend
+    env_file:
+      - .nasiko-local.env 
     environment:
       OLLAMA_SERVER: http://ollama:11434
       NASIKO_BACKEND: http://nasiko-backend:8000/api/v1
       KONG_GATEWAY_URL: http://kong-gateway:8000
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
-      MINIMAX_BASE_URL: ${MINIMAX_BASE_URL:-https://api.minimax.io/v1}
       ROUTER_LLM_PROVIDER: ${ROUTER_LLM_PROVIDER:-openai}
       ROUTER_LLM_MODEL: ${ROUTER_LLM_MODEL:-gpt-4o-mini}
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-openai}
@@ -339,6 +335,8 @@ services:
         KONG_URL="http://localhost:${NASIKO_PORT_KONG:-9100}"
         sed -i "s|https://nasiko.dev|$$KONG_URL|g" /usr/share/nginx/html/main.dart.js
         exec /docker-entrypoint.sh nginx -g 'daemon off;'
+    volumes:
+      - ./agent-gateway/web/default.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - app-network
     healthcheck:
@@ -384,6 +382,8 @@ services:
     depends_on:
       - redis
       - nasiko-backend
+    env_file:
+      - .nasiko-local.env
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
@@ -392,9 +392,6 @@ services:
       NASIKO_API_URL: http://nasiko-backend:8000
       KONG_GATEWAY_URL: http://localhost:9100
       K8S_ENABLED: "false"
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      MINIMAX_API_KEY: ${MINIMAX_API_KEY:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./agents:/app/agents:ro
